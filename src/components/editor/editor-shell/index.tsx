@@ -39,6 +39,9 @@ function useEditorShortcuts() {
         if (selection?.type === "layer") {
           useProjectStore.getState().removeLayer(selection.id);
           select(null);
+        } else if (selection?.type === "background" && selection.changeId) {
+          useProjectStore.getState().removeBackgroundChange(selection.changeId);
+          select({ type: "background" });
         }
       }
     };

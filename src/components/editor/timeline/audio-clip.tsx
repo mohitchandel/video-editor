@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { TIMELINE } from "@/config/editor-config";
-import { clamp } from "@/lib/audio/audio-utils";
+import { clamp, formatTime } from "@/lib/audio/audio-utils";
 import type { ProjectAudio } from "@/lib/project/project-schema";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
@@ -36,6 +36,8 @@ export function AudioClip({
     trimEnd: number;
   } | null>(null);
 
+  const [dragging, setDragging] = useState<TrimEdge | null>(null);
+
   const trimEnd = audio.trimEnd ?? audio.duration;
   const snap = (t: number, disable: boolean) =>
     disable ? t : Math.round(t / TIMELINE.snap) * TIMELINE.snap;
@@ -51,6 +53,7 @@ export function AudioClip({
       trimEnd,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(edge);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -85,10 +88,13 @@ export function AudioClip({
 
   const onPointerUp = () => {
     dragRef.current = null;
+    setDragging(null);
   };
 
+  // Bracket-style in/out handles, like the trim grips in desktop editors.
   const handleClass =
-    "absolute inset-y-0 z-10 flex w-2.5 cursor-ew-resize touch-none items-center justify-center bg-track-audio text-background opacity-70 transition-opacity hover:opacity-100";
+    "absolute inset-y-0 z-10 flex w-3.5 cursor-ew-resize touch-none items-center justify-center bg-track-audio text-background shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-[filter] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none";
+  const gripClass = "flex flex-col gap-0.5 *:h-2.5 *:w-px *:bg-current";
 
   return (
     <div
@@ -107,15 +113,15 @@ export function AudioClip({
         <AudioWaveform widthPx={widthPx} heightPx={TIMELINE.trackHeight - 8} />
       </button>
 
-      {/* Trimmed-off regions */}
+      {/* Trimmed-off regions, hatched so they read as "cut" */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 bg-background/70"
+        className="pointer-events-none absolute inset-y-0 left-0 bg-background/75 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,0.05)_6px_8px)]"
         style={{ width: audio.trimStart * pxPerSecond }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 bg-background/70"
+        className="pointer-events-none absolute inset-y-0 right-0 bg-background/75 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,0.05)_6px_8px)]"
         style={{ width: (audio.duration - trimEnd) * pxPerSecond }}
       />
 
@@ -130,11 +136,30 @@ export function AudioClip({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className={cn(handleClass, "rounded-l-md")}
+        title={`In point ${formatTime(audio.trimStart)}`}
+        className={cn(handleClass, "flex-row gap-0.5 rounded-l-md")}
         style={{ left: audio.trimStart * pxPerSecond }}
       >
-        <span className="h-3 w-px bg-current" />
+        <span className={gripClass}>
+          <span />
+          <span />
+        </span>
       </span>
+      {dragging ? (
+        <span
+          aria-live="polite"
+          className="pointer-events-none absolute top-0.5 z-20 rounded bg-background/90 px-1 font-mono text-[10px] text-foreground"
+          style={
+            dragging === "start"
+              ? { left: audio.trimStart * pxPerSecond + 16 }
+              : { left: trimEnd * pxPerSecond - 16, transform: "translateX(-100%)" }
+          }
+        >
+          {dragging === "start"
+            ? `In ${formatTime(audio.trimStart)}`
+            : `Out ${formatTime(trimEnd)} · ${formatTime(trimEnd - audio.trimStart)} long`}
+        </span>
+      ) : null}
       <span
         role="slider"
         aria-label="Trim end"
@@ -146,10 +171,14 @@ export function AudioClip({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        title={`Out point ${formatTime(trimEnd)}`}
         className={cn(handleClass, "rounded-r-md")}
-        style={{ left: trimEnd * pxPerSecond - 10 }}
+        style={{ left: trimEnd * pxPerSecond - 14 }}
       >
-        <span className="h-3 w-px bg-current" />
+        <span className={gripClass}>
+          <span />
+          <span />
+        </span>
       </span>
     </div>
   );

@@ -124,6 +124,27 @@ export const backgroundSchema = z.object({
 });
 export type ProjectBackground = z.infer<typeof backgroundSchema>;
 
+export const backgroundTransitionSchema = z.enum([
+  "cut",
+  "fade",
+  "slide-left",
+  "slide-right",
+  "slide-up",
+  "zoom",
+]);
+export type BackgroundTransition = z.infer<typeof backgroundTransitionSchema>;
+
+/** A background that takes over at `at` seconds, animating in from the previous one. */
+export const backgroundChangeSchema = z.object({
+  id: z.string(),
+  at: z.number().min(0),
+  background: backgroundSchema,
+  transition: backgroundTransitionSchema.default("fade"),
+  /** Seconds the transition takes. Ignored for "cut". */
+  transitionDuration: z.number().min(0.1).max(5).default(1),
+});
+export type BackgroundChange = z.infer<typeof backgroundChangeSchema>;
+
 export const projectAudioSchema = z.object({
   assetId: z.string(),
   name: z.string(),
@@ -145,7 +166,9 @@ export const projectSchema = z.object({
   /** Seconds. Follows the audio duration when audio is loaded. */
   duration: z.number().positive().default(30),
   audio: projectAudioSchema.nullable().default(null),
+  /** Background from time 0 until the first change. */
   background: backgroundSchema,
+  backgroundChanges: z.array(backgroundChangeSchema).default([]),
   layers: z.array(layerSchema).default([]),
   assets: z.array(assetMetaSchema).default([]),
   updatedAt: z.number().default(0),

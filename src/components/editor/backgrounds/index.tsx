@@ -1,9 +1,14 @@
 "use client";
 
-import { Wallpaper } from "lucide-react";
+import { Plus, Wallpaper } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
+import { Button } from "@/components/ui/button";
+import { getAudioEngine } from "@/lib/audio/audio-engine";
+import { formatTime } from "@/lib/audio/audio-utils";
 import { getAssetUrl } from "@/lib/media/media-registry";
+import type { ProjectBackground } from "@/lib/project/project-schema";
 import { useEditorStore } from "@/stores/editor-store";
+import { usePlaybackStore } from "@/stores/playback-store";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
 
@@ -30,41 +35,83 @@ const GRADIENTS: Array<{ from: string; to: string; angle: number }> = [
 ];
 
 export function BackgroundPicker() {
-  const background = useProjectStore((s) => s.project.background);
+  const selection = useEditorStore((s) => s.selection);
+  const select = useEditorStore((s) => s.select);
+  // Presets apply to the selected background segment: a timed change if one
+  // is selected, otherwise the base background.
+  const changeId =
+    selection?.type === "background" ? (selection.changeId ?? null) : null;
+  const baseBackground = useProjectStore((s) => s.project.background);
+  const change = useProjectStore((s) =>
+    s.project.backgroundChanges.find((c) => c.id === changeId),
+  );
+  const changeCount = useProjectStore((s) => s.project.backgroundChanges.length);
   const assets = useProjectStore((s) => s.project.assets);
   const update = useProjectStore((s) => s.update);
-  const select = useEditorStore((s) => s.select);
+  const addBackgroundChange = useProjectStore((s) => s.addBackgroundChange);
+  const displayTime = usePlaybackStore((s) => s.displayTime);
+  // Times are shown relative to the trim in point, matching the readout.
+  const trimStart = useProjectStore((s) => s.project.audio?.trimStart ?? 0);
+  const shown = (t: number) => formatTime(Math.max(0, t - trimStart));
+
+  const background = change ? change.background : baseBackground;
+  const targetSelection = { type: "background" as const, ...(change ? { changeId: change.id } : {}) };
 
   const images = assets.filter((a) => a.kind === "image");
 
-  const pickSolid = (color: string) => {
+  const apply = (mutate: (bg: ProjectBackground) => void) => {
     update((d) => {
-      d.background.type = "solid";
-      d.background.color = color;
+      const target = changeId
+        ? d.backgroundChanges.find((c) => c.id === changeId)?.background
+        : d.background;
+      if (target) mutate(target);
     });
-    select({ type: "background" });
+    select(targetSelection);
   };
 
-  const pickGradient = (g: (typeof GRADIENTS)[number]) => {
-    update((d) => {
-      d.background.type = "gradient";
-      d.background.gradientFrom = g.from;
-      d.background.gradientTo = g.to;
-      d.background.gradientAngle = g.angle;
+  const pickSolid = (color: string) =>
+    apply((bg) => {
+      bg.type = "solid";
+      bg.color = color;
     });
-    select({ type: "background" });
-  };
 
-  const pickImage = (assetId: string) => {
-    update((d) => {
-      d.background.type = "image";
-      d.background.assetId = assetId;
+  const pickGradient = (g: (typeof GRADIENTS)[number]) =>
+    apply((bg) => {
+      bg.type = "gradient";
+      bg.gradientFrom = g.from;
+      bg.gradientTo = g.to;
+      bg.gradientAngle = g.angle;
     });
-    select({ type: "background" });
+
+  const pickImage = (assetId: string) =>
+    apply((bg) => {
+      bg.type = "image";
+      bg.assetId = assetId;
+    });
+
+  const addChangeAtPlayhead = () => {
+    const at = Math.round(getAudioEngine().getCurrentTime() * 2) / 2;
+    const id = addBackgroundChange(at);
+    select({ type: "background", changeId: id });
   };
 
   return (
     <div className="flex flex-col gap-4 p-3">
+      <section className="flex flex-col gap-2 rounded-md border bg-elevated p-2.5">
+        <p className="text-xs font-medium">
+          {change
+            ? `Editing change at ${shown(change.at)}`
+            : "Editing the opening background"}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          Move the playhead, then add a change to switch backgrounds mid-song.
+          Pick the transition in the inspector.
+          {changeCount > 0 ? ` ${changeCount} change${changeCount > 1 ? "s" : ""} on the timeline.` : ""}
+        </p>
+        <Button size="sm" variant="outline" onClick={addChangeAtPlayhead}>
+          <Plus aria-hidden /> Add change at {shown(displayTime)}
+        </Button>
+      </section>
       <section className="flex flex-col gap-2">
         <p className="text-[11px] text-muted-foreground">Solid colors</p>
         <div className="grid grid-cols-4 gap-2">

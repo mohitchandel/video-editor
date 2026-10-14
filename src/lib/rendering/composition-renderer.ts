@@ -2,6 +2,7 @@ import type { AudioFrame } from "@/lib/audio/audio-engine";
 import type {
   Layer,
   Project,
+  ProjectBackground,
   TextLayer,
   VisualizerLayer,
   ImageLayer,
@@ -14,6 +15,9 @@ import {
 } from "./canvas-utils";
 import type { AssetResolver, RenderSize } from "./render-types";
 import { VISUALIZER_DRAWS } from "./visualizer-draws";
+
+const easeInOut = (t: number) =>
+  t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
 /**
  * Draws a project at a given time onto a 2D canvas. Shared by the live
@@ -35,7 +39,7 @@ export class CompositionRenderer {
     const { width, height } = size;
     ctx.save();
     ctx.clearRect(0, 0, width, height);
-    this.drawBackground(ctx, project, size);
+    this.drawBackground(ctx, project, time, size);
     for (const layer of project.layers) {
       if (!this.isLayerActive(layer, time, project.duration)) continue;
       ctx.save();
@@ -55,12 +59,71 @@ export class CompositionRenderer {
     return time >= layer.start - 1e-6 && time <= end + 1e-6;
   }
 
+  /**
+   * Picks the background in effect at `time` and, while a change is still
+   * transitioning in, draws the previous one underneath and animates the new
+   * one on top.
+   */
   private drawBackground(
     ctx: CanvasRenderingContext2D,
     project: Project,
+    time: number,
     size: RenderSize,
   ) {
-    const bg = project.background;
+    const changes = [...project.backgroundChanges].sort((a, b) => a.at - b.at);
+    let active = -1;
+    for (let i = 0; i < changes.length; i++) {
+      if (changes[i].at <= time + 1e-6) active = i;
+    }
+    if (active < 0) {
+      this.fillBackground(ctx, project.background, size);
+      return;
+    }
+    const current = changes[active];
+    const previous =
+      active > 0 ? changes[active - 1].background : project.background;
+    const length = current.transition === "cut" ? 0 : current.transitionDuration;
+    const elapsed = time - current.at;
+    if (elapsed >= length) {
+      this.fillBackground(ctx, current.background, size);
+      return;
+    }
+
+    const p = easeInOut(elapsed / length);
+    const { width, height } = size;
+    this.fillBackground(ctx, previous, size);
+    ctx.save();
+    switch (current.transition) {
+      case "fade":
+        ctx.globalAlpha = p;
+        break;
+      case "slide-left":
+        ctx.translate((1 - p) * width, 0);
+        break;
+      case "slide-right":
+        ctx.translate(-(1 - p) * width, 0);
+        break;
+      case "slide-up":
+        ctx.translate(0, (1 - p) * height);
+        break;
+      case "zoom": {
+        const scale = 1.15 - 0.15 * p;
+        ctx.globalAlpha = p;
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(scale, scale);
+        ctx.translate(-width / 2, -height / 2);
+        break;
+      }
+    }
+    this.fillBackground(ctx, current.background, size);
+    ctx.restore();
+  }
+
+  private fillBackground(
+    ctx: CanvasRenderingContext2D,
+    bg: ProjectBackground,
+    size: RenderSize,
+  ) {
     const { width, height } = size;
     if (bg.type === "image" && bg.assetId) {
       const img = this.assets.getImage(bg.assetId);

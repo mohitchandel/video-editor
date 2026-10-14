@@ -30,6 +30,7 @@ export function createDefaultProject(): Project {
       blur: 0,
       dim: 0,
     },
+    backgroundChanges: [],
     layers: [],
     assets: [],
     updatedAt: 0,

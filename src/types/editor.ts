@@ -9,6 +9,7 @@ export type ToolId =
 
 export type Selection =
   | { type: "layer"; id: string }
-  | { type: "background" }
+  /** changeId targets a timed background change; omitted = the base background. */
+  | { type: "background"; changeId?: string }
   | { type: "audio" }
   | null;

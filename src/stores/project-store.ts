@@ -36,6 +36,9 @@ interface ProjectStore {
   duplicateLayer: (id: string) => string | null;
   /** +1 brings the layer forward (toward the top), -1 sends it backward. */
   moveLayer: (id: string, direction: -1 | 1) => void;
+  /** Starts a new background at `at` seconds (copying the one in effect); returns its id. */
+  addBackgroundChange: (at: number) => string;
+  removeBackgroundChange: (id: string) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -122,6 +125,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (index < 0 || target < 0 || target >= draft.layers.length) return;
       const [layer] = draft.layers.splice(index, 1);
       draft.layers.splice(target, 0, layer);
+    });
+  },
+
+  addBackgroundChange: (at) => {
+    const id = createId("bgc");
+    get().update((draft) => {
+      const before = draft.backgroundChanges
+        .filter((c) => c.at <= at)
+        .sort((a, b) => a.at - b.at);
+      const source = before.length
+        ? before[before.length - 1].background
+        : draft.background;
+      draft.backgroundChanges.push({
+        id,
+        at,
+        background: structuredClone(source),
+        transition: "fade",
+        transitionDuration: 1,
+      });
+    });
+    return id;
+  },
+
+  removeBackgroundChange: (id) => {
+    get().update((draft) => {
+      draft.backgroundChanges = draft.backgroundChanges.filter((c) => c.id !== id);
     });
   },
 

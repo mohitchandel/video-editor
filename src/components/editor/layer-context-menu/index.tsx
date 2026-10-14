@@ -95,7 +95,15 @@ export function LayerContextMenu({
             </ContextMenuItem>
           </>
         ) : (
-          <ContextMenuItem onClick={() => select({ type: "background" })}>
+          <ContextMenuItem
+            onClick={() => {
+              // Open both places the background can be edited from.
+              const editor = useEditorStore.getState();
+              editor.select({ type: "background" });
+              editor.setTool("backgrounds");
+              if (!editor.inspectorOpen) editor.toggleInspector();
+            }}
+          >
             <Wallpaper aria-hidden /> Edit background
           </ContextMenuItem>
         )}

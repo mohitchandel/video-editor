@@ -21,6 +21,7 @@ import { useEditorStore } from "@/stores/editor-store";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
 import { AudioClip } from "./audio-clip";
+import { BackgroundTrack } from "./background-track";
 import { TimelineClip } from "./timeline-clip";
 import { TimelinePlayhead } from "./timeline-playhead";
 
@@ -120,6 +121,7 @@ export function Timeline() {
   const trimEnd = project.audio
     ? (project.audio.trimEnd ?? project.audio.duration)
     : project.duration;
+  const trimmed = trimStart > 0 || trimEnd < project.duration - 0.01;
 
   return (
     <section
@@ -129,11 +131,12 @@ export function Timeline() {
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
         <span className="text-[11px] font-semibold tracking-wide">Timeline</span>
         <span className="ml-2 text-[11px] text-muted-foreground">
-          Drag clips to move · drag edges to trim · hold ⌥ for free positioning
+          Drag clips to move · drag edges to trim · drag the [ ] handles on the
+          audio to set in/out · hold ⌥ for free positioning
         </span>
         <div className="flex-1" />
         <span className="mr-1 font-mono text-[11px] text-muted-foreground">
-          {formatTime(project.duration)}
+          {formatTime(trimEnd - trimStart)}
         </span>
         <IconButton
           label="Zoom out timeline"
@@ -186,6 +189,17 @@ export function Timeline() {
               className="relative cursor-pointer touch-none border-b bg-background/60"
               style={{ width }}
             >
+              {/* Work-area bar: the in/out range that plays and exports */}
+              {trimmed ? (
+                <span
+                  aria-hidden
+                  className="absolute top-0 h-1 rounded-full bg-track-audio"
+                  style={{
+                    left: trimStart * pxPerSecond,
+                    width: (trimEnd - trimStart) * pxPerSecond,
+                  }}
+                />
+              ) : null}
               {ticks.map((t) => (
                 <span
                   key={t}
@@ -234,7 +248,7 @@ export function Timeline() {
                   <TimelineClip
                     layer={layer}
                     pxPerSecond={pxPerSecond}
-                    duration={project.duration}
+                    duration={trimEnd}
                     selected={
                       selection?.type === "layer" && selection.id === layer.id
                     }
@@ -283,23 +297,10 @@ export function Timeline() {
               className="relative shrink-0"
               style={{ width, height: TIMELINE.trackHeight }}
             >
-              <button
-                type="button"
-                aria-label="Background"
-                onClick={() => select({ type: "background" })}
-                className={cn(
-                  "absolute inset-y-1 left-0 flex items-center rounded-md border border-track-background/40 bg-track-background/10 px-2 text-[11px] text-track-background focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
-                  selection?.type === "background" &&
-                    "ring-2 ring-primary ring-offset-1 ring-offset-background",
-                )}
-                style={{ width }}
-              >
-                {project.background.type === "solid"
-                  ? "Solid color"
-                  : project.background.type === "gradient"
-                    ? "Gradient"
-                    : "Image"}
-              </button>
+              <BackgroundTrack
+                pxPerSecond={pxPerSecond}
+                duration={project.duration}
+              />
             </div>
           </div>
 
