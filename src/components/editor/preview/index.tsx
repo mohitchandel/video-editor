@@ -20,13 +20,7 @@ import { PreviewCanvas } from "./preview-canvas";
 function PlaybackControls() {
   const isPlaying = usePlaybackStore((s) => s.isPlaying);
   const displayTime = usePlaybackStore((s) => s.displayTime);
-  // The readout counts within the trimmed range, so it matches the video.
-  const trimStart = useProjectStore((s) => s.project.audio?.trimStart ?? 0);
-  const trimEnd = useProjectStore((s) =>
-    s.project.audio
-      ? (s.project.audio.trimEnd ?? s.project.audio.duration)
-      : s.project.duration,
-  );
+  const duration = useProjectStore((s) => s.project.duration);
   const { toggle, seek, seekBy, changeVolume, toggleMute, volume, muted } =
     usePlaybackControls();
 
@@ -50,11 +44,9 @@ function PlaybackControls() {
       </IconButton>
 
       <span className="ml-2 font-mono text-[11px] text-muted-foreground tabular-nums">
-        <span className="text-foreground">
-          {formatTime(Math.max(0, displayTime - trimStart))}
-        </span>
+        <span className="text-foreground">{formatTime(displayTime)}</span>
         {" / "}
-        {formatTime(trimEnd - trimStart)}
+        {formatTime(duration)}
       </span>
 
       <div className="flex-1" />

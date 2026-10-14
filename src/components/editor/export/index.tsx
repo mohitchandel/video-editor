@@ -43,7 +43,8 @@ export function ExportDialog() {
   const outW = Math.round((ratio.width * resolution.scale) / 2) * 2;
   const outH = Math.round((ratio.height * resolution.scale) / 2) * 2;
   const exporting = state.phase === "exporting";
-  const hasContent = project.audio !== null || project.layers.length > 0;
+  const audioCount = project.audioClips.length;
+  const hasContent = audioCount > 0 || project.layers.length > 0;
 
   return (
     <Dialog
@@ -123,7 +124,11 @@ export function ExportDialog() {
             </div>
             <p className="text-[11px] text-muted-foreground">
               Output: {outW} × {outH} · 30 fps
-              {project.audio ? ` · audio from “${project.audio.name}”` : " · no audio track"}
+              {audioCount === 1
+                ? ` · audio from “${project.audioClips[0].name}”`
+                : audioCount > 1
+                  ? ` · ${audioCount} audio clips mixed`
+                  : " · no audio track"}
             </p>
 
             {!hasContent ? (

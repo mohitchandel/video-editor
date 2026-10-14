@@ -26,6 +26,8 @@ export const TIMELINE = {
   zoomLevels: [1, 2, 4, 8, 16] as const,
   /** Shortest trimmed audio length in seconds. */
   minAudioLength: 1,
+  /** Smallest height the timeline can be dragged to, pixels. */
+  minHeight: 140,
   /** Snap increment in seconds. */
   snap: 0.5,
   trackHeight: 36,

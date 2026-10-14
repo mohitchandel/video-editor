@@ -72,7 +72,7 @@ function VisualizerThumb({ style }: { style: VisualizerStyle }) {
 
 export function VisualizerPicker() {
   const addLayer = useProjectStore((s) => s.addLayer);
-  const hasAudio = useProjectStore((s) => s.project.audio !== null);
+  const hasAudio = useProjectStore((s) => s.project.audioClips.length > 0);
   const select = useEditorStore((s) => s.select);
 
   const addVisualizer = (style: VisualizerStyle, name: string) => {

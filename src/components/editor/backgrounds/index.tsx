@@ -50,9 +50,7 @@ export function BackgroundPicker() {
   const update = useProjectStore((s) => s.update);
   const addBackgroundChange = useProjectStore((s) => s.addBackgroundChange);
   const displayTime = usePlaybackStore((s) => s.displayTime);
-  // Times are shown relative to the trim in point, matching the readout.
-  const trimStart = useProjectStore((s) => s.project.audio?.trimStart ?? 0);
-  const shown = (t: number) => formatTime(Math.max(0, t - trimStart));
+  const shown = formatTime;
 
   const background = change ? change.background : baseBackground;
   const targetSelection = { type: "background" as const, ...(change ? { changeId: change.id } : {}) };

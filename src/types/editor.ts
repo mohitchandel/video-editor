@@ -11,5 +11,5 @@ export type Selection =
   | { type: "layer"; id: string }
   /** changeId targets a timed background change; omitted = the base background. */
   | { type: "background"; changeId?: string }
-  | { type: "audio" }
+  | { type: "audio"; id: string }
   | null;

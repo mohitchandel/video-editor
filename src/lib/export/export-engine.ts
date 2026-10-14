@@ -38,8 +38,7 @@ export class ExportEngine {
     this.aborted = false;
     const engine = getAudioEngine();
     engine.pause();
-    // Export covers the trimmed in/out range only.
-    const range = engine.getRange();
+    const range = { start: 0, end: project.duration };
     engine.seek(range.start);
 
     const canvas = document.createElement("canvas");

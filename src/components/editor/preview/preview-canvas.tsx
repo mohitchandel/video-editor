@@ -194,7 +194,10 @@ export function PreviewCanvas() {
         };
 
   return (
-    <LayerContextMenu layerId={menuTarget} triggerClassName="contents">
+    <LayerContextMenu
+      target={menuTarget ? { type: "layer", id: menuTarget } : { type: "background" }}
+      triggerClassName="contents"
+    >
     <div
       ref={wrapperRef}
       className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-canvas p-4"

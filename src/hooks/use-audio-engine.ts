@@ -10,18 +10,26 @@ export function useAudioEngine() {
 }
 
 /**
- * Keeps the engine in sync with the project: silent-mode duration when there
- * is no audio, and the trim window when there is.
+ * Keeps the engine in sync with the project: its length, and which clips
+ * play where. Mount once in the editor shell.
  */
 export function useSyncEngineDuration() {
   const duration = useProjectStore((s) => s.project.duration);
-  const hasAudio = useProjectStore((s) => s.project.audio !== null);
-  const trimStart = useProjectStore((s) => s.project.audio?.trimStart ?? 0);
-  const trimEnd = useProjectStore((s) => s.project.audio?.trimEnd ?? null);
+  const clips = useProjectStore((s) => s.project.audioClips);
   useEffect(() => {
-    if (!hasAudio) getAudioEngine().setSilentDuration(duration);
-  }, [duration, hasAudio]);
+    getAudioEngine().setDuration(duration);
+  }, [duration]);
   useEffect(() => {
-    if (hasAudio) getAudioEngine().setTrim(trimStart, trimEnd);
-  }, [hasAudio, trimStart, trimEnd]);
+    getAudioEngine().setClips(
+      clips.map((c) => ({
+        id: c.id,
+        assetId: c.assetId,
+        start: c.start,
+        trimStart: c.trimStart,
+        trimEnd: c.trimEnd ?? c.duration,
+        volume: c.volume,
+        muted: c.muted,
+      })),
+    );
+  }, [clips]);
 }

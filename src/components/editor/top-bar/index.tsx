@@ -58,7 +58,7 @@ export function TopBar() {
   const [confirmNew, setConfirmNew] = useState(false);
 
   const startNewProject = () => {
-    getAudioEngine().unload();
+    getAudioEngine().unloadAll();
     clearAssets();
     replaceProject(createDefaultProject());
     select(null);

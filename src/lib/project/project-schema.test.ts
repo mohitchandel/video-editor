@@ -22,16 +22,36 @@ describe("project schema", () => {
     if (parsed.ok) expect(parsed.project).toEqual(project);
   });
 
-  it("fills trim defaults for projects saved before trimming existed", () => {
+  it("migrates projects saved with a single audio field into one clip", () => {
+    const legacy: Record<string, unknown> = {
+      ...createDefaultProject(),
+      audio: { assetId: "ast_1", name: "song.mp3", duration: 120, volume: 0.8, trimStart: 5 },
+    };
+    delete legacy.audioClips;
+    const parsed = parseProject(legacy);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.project.audioClips).toHaveLength(1);
+      const clip = parsed.project.audioClips[0];
+      expect(clip.assetId).toBe("ast_1");
+      expect(clip.start).toBe(0);
+      expect(clip.trimStart).toBe(5);
+      expect(clip.trimEnd).toBeNull();
+      expect(clip.volume).toBe(0.8);
+      expect(clip.muted).toBe(false);
+    }
+  });
+
+  it("fills clip defaults for clips missing optional fields", () => {
     const project = createDefaultProject();
     const parsed = parseProject({
       ...project,
-      audio: { assetId: "ast_1", name: "song.mp3", duration: 120, volume: 1 },
+      audioClips: [{ id: "aud_1", assetId: "ast_1", name: "song.mp3", duration: 120 }],
     });
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
-      expect(parsed.project.audio?.trimStart).toBe(0);
-      expect(parsed.project.audio?.trimEnd).toBeNull();
+      expect(parsed.project.audioClips[0].start).toBe(0);
+      expect(parsed.project.audioClips[0].volume).toBe(1);
     }
   });
 

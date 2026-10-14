@@ -145,27 +145,46 @@ export const backgroundChangeSchema = z.object({
 });
 export type BackgroundChange = z.infer<typeof backgroundChangeSchema>;
 
-export const projectAudioSchema = z.object({
+/**
+ * One piece of audio placed on the timeline. Several clips may overlap; they
+ * are mixed together. `start` is the timeline position, trim points are
+ * within the file.
+ */
+export const audioClipSchema = z.object({
+  id: z.string(),
   assetId: z.string(),
   name: z.string(),
   /** Full length of the decoded file, seconds. */
   duration: z.number().positive(),
-  volume: z.number().min(0).max(1).default(1),
-  /** In point within the file, seconds. Project time 0 maps here. */
+  /** Timeline position of the clip's first audible sample, seconds. */
+  start: z.number().min(0).default(0),
+  /** In point within the file, seconds. */
   trimStart: z.number().min(0).default(0),
-  /** Out point within the file, seconds. null = play to the end. */
+  /** Out point within the file, seconds. null = to the end of the file. */
   trimEnd: z.number().positive().nullable().default(null),
+  volume: z.number().min(0).max(1).default(1),
+  muted: z.boolean().default(false),
 });
-export type ProjectAudio = z.infer<typeof projectAudioSchema>;
+export type AudioClip = z.infer<typeof audioClipSchema>;
+
+/** Audible length of a clip on the timeline. */
+export function audioClipLength(clip: AudioClip): number {
+  return (clip.trimEnd ?? clip.duration) - clip.trimStart;
+}
+
+/** Project length implied by the clips: the end of the last one. */
+export function audioClipsEnd(clips: AudioClip[]): number {
+  return clips.reduce((end, c) => Math.max(end, c.start + audioClipLength(c)), 0);
+}
 
 export const projectSchema = z.object({
   version: z.literal(1),
   id: z.string(),
   name: z.string().min(1).max(120),
   aspectRatio: aspectRatioSchema.default("16:9"),
-  /** Seconds. Follows the audio duration when audio is loaded. */
+  /** Seconds. Follows the end of the last audio clip when there are clips. */
   duration: z.number().positive().default(30),
-  audio: projectAudioSchema.nullable().default(null),
+  audioClips: z.array(audioClipSchema).default([]),
   /** Background from time 0 until the first change. */
   background: backgroundSchema,
   backgroundChanges: z.array(backgroundChangeSchema).default([]),

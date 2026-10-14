@@ -1,8 +1,23 @@
 import { create } from "zustand";
-import type { Layer, Project } from "@/lib/project/project-schema";
+import {
+  audioClipLength,
+  audioClipsEnd,
+  type AudioClip,
+  type Layer,
+  type Project,
+} from "@/lib/project/project-schema";
 import { createDefaultProject, createId } from "@/lib/project/project-defaults";
 
 const HISTORY_LIMIT = 50;
+/** Shortest piece a split may leave behind, seconds. */
+const MIN_SPLIT_PART = 0.25;
+
+/** The project is as long as its audio; with no clips the length stays put. */
+function syncDuration(draft: Project) {
+  if (draft.audioClips.length > 0) {
+    draft.duration = Math.max(1, audioClipsEnd(draft.audioClips));
+  }
+}
 /** Repeated edits with the same key within this window share one undo step. */
 const COALESCE_WINDOW_MS = 800;
 
@@ -39,6 +54,17 @@ interface ProjectStore {
   /** Starts a new background at `at` seconds (copying the one in effect); returns its id. */
   addBackgroundChange: (at: number) => string;
   removeBackgroundChange: (id: string) => void;
+  addAudioClip: (clip: AudioClip) => void;
+  updateAudioClip: (
+    id: string,
+    patch: Partial<AudioClip>,
+    options?: UpdateOptions,
+  ) => void;
+  removeAudioClip: (id: string) => void;
+  /** Cuts a clip in two at a timeline time; returns the new right-hand clip's id. */
+  splitAudioClip: (id: string, at: number) => string | null;
+  /** Places a copy right after the source clip; returns the new id. */
+  duplicateAudioClip: (id: string) => string | null;
   undo: () => void;
   redo: () => void;
 }
@@ -152,6 +178,69 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().update((draft) => {
       draft.backgroundChanges = draft.backgroundChanges.filter((c) => c.id !== id);
     });
+  },
+
+  addAudioClip: (clip) => {
+    get().update((draft) => {
+      draft.audioClips.push(clip);
+      syncDuration(draft);
+    });
+  },
+
+  updateAudioClip: (id, patch, options) => {
+    get().update(
+      (draft) => {
+        const clip = draft.audioClips.find((c) => c.id === id);
+        if (!clip) return;
+        Object.assign(clip, patch);
+        syncDuration(draft);
+      },
+      { coalesceKey: options?.coalesceKey ?? `audio:${id}`, ...options },
+    );
+  },
+
+  removeAudioClip: (id) => {
+    get().update((draft) => {
+      draft.audioClips = draft.audioClips.filter((c) => c.id !== id);
+      syncDuration(draft);
+    });
+  },
+
+  splitAudioClip: (id, at) => {
+    const source = get().project.audioClips.find((c) => c.id === id);
+    if (!source) return null;
+    const length = audioClipLength(source);
+    const into = at - source.start;
+    if (into <= MIN_SPLIT_PART || length - into <= MIN_SPLIT_PART) return null;
+    const right: AudioClip = {
+      ...source,
+      id: createId("aud"),
+      start: at,
+      trimStart: source.trimStart + into,
+    };
+    get().update((draft) => {
+      const left = draft.audioClips.find((c) => c.id === id);
+      if (!left) return;
+      left.trimEnd = left.trimStart + into;
+      draft.audioClips.splice(draft.audioClips.indexOf(left) + 1, 0, right);
+    });
+    return right.id;
+  },
+
+  duplicateAudioClip: (id) => {
+    const source = get().project.audioClips.find((c) => c.id === id);
+    if (!source) return null;
+    const copy: AudioClip = {
+      ...source,
+      id: createId("aud"),
+      start: source.start + audioClipLength(source),
+    };
+    get().update((draft) => {
+      const index = draft.audioClips.findIndex((c) => c.id === id);
+      draft.audioClips.splice(index + 1, 0, copy);
+      syncDuration(draft);
+    });
+    return copy.id;
   },
 
   undo: () => {

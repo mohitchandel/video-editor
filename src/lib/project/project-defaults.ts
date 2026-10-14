@@ -19,7 +19,7 @@ export function createDefaultProject(): Project {
     name: "Untitled project",
     aspectRatio: "16:9",
     duration: DEFAULT_PROJECT_DURATION,
-    audio: null,
+    audioClips: [],
     background: {
       type: "gradient",
       color: "#0c0c10",

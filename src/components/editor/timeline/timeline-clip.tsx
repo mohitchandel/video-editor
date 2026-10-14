@@ -93,7 +93,7 @@ export function TimelineClip({
   };
 
   return (
-    <LayerContextMenu layerId={layer.id} triggerClassName="contents">
+    <LayerContextMenu target={{ type: "layer", id: layer.id }} triggerClassName="contents">
     <div
       role="button"
       tabIndex={0}

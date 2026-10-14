@@ -7,6 +7,8 @@ import {
   Image as ImageIcon,
   Music2,
   Type,
+  Volume2,
+  VolumeX,
   Wallpaper,
   Waves,
   ZoomIn,
@@ -20,7 +22,7 @@ import type { Layer } from "@/lib/project/project-schema";
 import { useEditorStore } from "@/stores/editor-store";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
-import { AudioClip } from "./audio-clip";
+import { AudioClipView } from "./audio-clip";
 import { BackgroundTrack } from "./background-track";
 import { TimelineClip } from "./timeline-clip";
 import { TimelinePlayhead } from "./timeline-playhead";
@@ -45,28 +47,37 @@ function TrackLabel({
   name,
   colorClass,
   visible,
+  toggleKind = "visibility",
   onToggleVisible,
 }: {
   icon: typeof Music2;
   name: string;
   colorClass: string;
   visible?: boolean;
+  /** Audio rows toggle mute instead of visibility. */
+  toggleKind?: "visibility" | "mute";
   onToggleVisible?: () => void;
 }) {
+  const OnIcon = toggleKind === "mute" ? Volume2 : Eye;
+  const OffIcon = toggleKind === "mute" ? VolumeX : EyeOff;
+  const onLabel = toggleKind === "mute" ? "Mute track" : "Hide track";
+  const offLabel = toggleKind === "mute" ? "Unmute track" : "Show track";
   return (
     <div
       className="sticky left-0 z-30 flex shrink-0 items-center gap-1.5 border-r border-b bg-card px-2"
       style={{ width: LABEL_WIDTH, height: TIMELINE.trackHeight }}
     >
       <Icon className={cn("size-3.5 shrink-0", colorClass)} aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+      <span className="min-w-0 flex-1 truncate text-[11px]" title={name}>
+        {name}
+      </span>
       {onToggleVisible ? (
         <IconButton
-          label={visible ? "Hide track" : "Show track"}
+          label={visible ? onLabel : offLabel}
           className="size-5"
           onClick={onToggleVisible}
         >
-          {visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+          {visible ? <OnIcon aria-hidden /> : <OffIcon aria-hidden />}
         </IconButton>
       ) : null}
     </div>
@@ -76,11 +87,29 @@ function TrackLabel({
 export function Timeline() {
   const project = useProjectStore((s) => s.project);
   const updateLayer = useProjectStore((s) => s.updateLayer);
+  const updateAudioClip = useProjectStore((s) => s.updateAudioClip);
   const selection = useEditorStore((s) => s.selection);
   const select = useEditorStore((s) => s.select);
   const zoom = useEditorStore((s) => s.timelineZoom);
   const setZoom = useEditorStore((s) => s.setTimelineZoom);
+  const height = useEditorStore((s) => s.timelineHeight);
+  const setHeight = useEditorStore((s) => s.setTimelineHeight);
   const scrubbing = useRef(false);
+  const resizing = useRef<{ startY: number; height: number } | null>(null);
+
+  const onResizePointerDown = (e: React.PointerEvent) => {
+    resizing.current = { startY: e.clientY, height };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onResizePointerMove = (e: React.PointerEvent) => {
+    const drag = resizing.current;
+    if (!drag) return;
+    const max = Math.round(window.innerHeight * 0.7);
+    setHeight(clamp(drag.height - (e.clientY - drag.startY), TIMELINE.minHeight, max));
+  };
+  const onResizePointerUp = () => {
+    resizing.current = null;
+  };
 
   // Zoom 1 = the whole project fits the visible track area.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,26 +146,36 @@ export function Timeline() {
     ticks.push(Number(t.toFixed(3)));
   }
 
-  const trimStart = project.audio?.trimStart ?? 0;
-  const trimEnd = project.audio
-    ? (project.audio.trimEnd ?? project.audio.duration)
-    : project.duration;
-  const trimmed = trimStart > 0 || trimEnd < project.duration - 0.01;
+  // Each audio clip gets its own row; later rows mix over earlier ones.
+  const audioRows = [...project.audioClips].sort((a, b) => a.start - b.start);
 
   return (
     <section
       aria-label="Timeline"
-      className="flex h-56 shrink-0 flex-col border-t bg-card"
+      className="relative flex shrink-0 flex-col border-t bg-card"
+      style={{ height }}
     >
+      {/* Drag to resize the timeline, like the panel splitter in desktop editors */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize timeline"
+        title="Drag to resize"
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={onResizePointerUp}
+        onPointerCancel={onResizePointerUp}
+        className="absolute inset-x-0 -top-1 z-50 h-2 cursor-row-resize touch-none hover:bg-primary/40"
+      />
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
         <span className="text-[11px] font-semibold tracking-wide">Timeline</span>
         <span className="ml-2 text-[11px] text-muted-foreground">
-          Drag clips to move · drag edges to trim · drag the [ ] handles on the
-          audio to set in/out · hold ⌥ for free positioning
+          Drag clips to move · drag edges to trim · right-click for split,
+          duplicate, mute · hold ⌥ for free positioning
         </span>
         <div className="flex-1" />
         <span className="mr-1 font-mono text-[11px] text-muted-foreground">
-          {formatTime(trimEnd - trimStart)}
+          {formatTime(project.duration)}
         </span>
         <IconButton
           label="Zoom out timeline"
@@ -189,17 +228,6 @@ export function Timeline() {
               className="relative cursor-pointer touch-none border-b bg-background/60"
               style={{ width }}
             >
-              {/* Work-area bar: the in/out range that plays and exports */}
-              {trimmed ? (
-                <span
-                  aria-hidden
-                  className="absolute top-0 h-1 rounded-full bg-track-audio"
-                  style={{
-                    left: trimStart * pxPerSecond,
-                    width: (trimEnd - trimStart) * pxPerSecond,
-                  }}
-                />
-              ) : null}
               {ticks.map((t) => (
                 <span
                   key={t}
@@ -248,7 +276,7 @@ export function Timeline() {
                   <TimelineClip
                     layer={layer}
                     pxPerSecond={pxPerSecond}
-                    duration={trimEnd}
+                    duration={project.duration}
                     selected={
                       selection?.type === "layer" && selection.id === layer.id
                     }
@@ -259,32 +287,46 @@ export function Timeline() {
             );
           })}
 
-          {/* Audio track */}
-          <div className="flex">
-            <TrackLabel
-              icon={Music2}
-              name={project.audio ? project.audio.name : "Audio"}
-              colorClass="text-track-audio"
-            />
-            <div
-              className="relative shrink-0 border-b"
-              style={{ width, height: TIMELINE.trackHeight }}
-            >
-              {project.audio ? (
-                <AudioClip
-                  audio={project.audio}
-                  pxPerSecond={pxPerSecond}
-                  widthPx={width}
-                  selected={selection?.type === "audio"}
-                  onSelect={() => select({ type: "audio" })}
-                />
-              ) : (
+          {/* Audio tracks — one row per clip */}
+          {audioRows.length === 0 ? (
+            <div className="flex">
+              <TrackLabel icon={Music2} name="Audio" colorClass="text-track-audio" />
+              <div
+                className="relative shrink-0 border-b"
+                style={{ width, height: TIMELINE.trackHeight }}
+              >
                 <p className="flex h-full items-center px-3 text-[11px] text-muted-foreground">
-                  No audio — add a song in the Audio tab.
+                  No audio — add songs in the Audio tab. Each one gets its own track.
                 </p>
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            audioRows.map((clip) => (
+              <div key={clip.id} className="flex">
+                <TrackLabel
+                  icon={Music2}
+                  name={clip.name}
+                  colorClass="text-track-audio"
+                  visible={!clip.muted}
+                  toggleKind="mute"
+                  onToggleVisible={() =>
+                    updateAudioClip(clip.id, { muted: !clip.muted }, { coalesceKey: `mute:${clip.id}` })
+                  }
+                />
+                <div
+                  className="relative shrink-0 border-b"
+                  style={{ width, height: TIMELINE.trackHeight }}
+                >
+                  <AudioClipView
+                    clip={clip}
+                    pxPerSecond={pxPerSecond}
+                    selected={selection?.type === "audio" && selection.id === clip.id}
+                    onSelect={() => select({ type: "audio", id: clip.id })}
+                  />
+                </div>
+              </div>
+            ))
+          )}
 
           {/* Background track */}
           <div className="flex">
@@ -305,25 +347,6 @@ export function Timeline() {
           </div>
 
           <TimelinePlayhead pxPerSecond={pxPerSecond} offsetPx={LABEL_WIDTH} />
-
-          {/* Trimmed-off time, dimmed across every track */}
-          {project.audio ? (
-            <>
-              <div
-                aria-hidden
-                className="pointer-events-none absolute top-0 bottom-0 z-10 bg-background/50"
-                style={{ left: LABEL_WIDTH, width: trimStart * pxPerSecond }}
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute top-0 bottom-0 z-10 bg-background/50"
-                style={{
-                  left: LABEL_WIDTH + trimEnd * pxPerSecond,
-                  width: Math.max(0, project.duration - trimEnd) * pxPerSecond,
-                }}
-              />
-            </>
-          ) : null}
         </div>
       </div>
     </section>

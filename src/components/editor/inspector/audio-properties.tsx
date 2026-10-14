@@ -1,80 +1,133 @@
 "use client";
 
+import { Scissors, Trash2 } from "lucide-react";
 import { PropertySlider } from "@/components/common/property-slider";
 import { Button } from "@/components/ui/button";
-import { formatTime } from "@/lib/audio/audio-utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useMediaUpload } from "@/hooks/use-media-upload";
 import { getAudioEngine } from "@/lib/audio/audio-engine";
+import { formatTime } from "@/lib/audio/audio-utils";
+import { audioClipLength } from "@/lib/project/project-schema";
+import { useEditorStore } from "@/stores/editor-store";
 import { useProjectStore } from "@/stores/project-store";
 
+/** Properties of the selected audio clip. */
 export function AudioProperties() {
-  const audio = useProjectStore((s) => s.project.audio);
-  const update = useProjectStore((s) => s.update);
+  const selection = useEditorStore((s) => s.selection);
+  const select = useEditorStore((s) => s.select);
+  const clipId = selection?.type === "audio" ? selection.id : null;
+  const clip = useProjectStore((s) => s.project.audioClips.find((c) => c.id === clipId));
+  const updateAudioClip = useProjectStore((s) => s.updateAudioClip);
+  const splitAudioClip = useProjectStore((s) => s.splitAudioClip);
+  const { removeAudioClip } = useMediaUpload();
 
-  if (!audio) {
+  if (!clip) {
     return (
       <p className="text-xs text-muted-foreground">
-        No audio loaded. Add a song from the Audio tab.
+        Select an audio clip on the timeline, or add a song from the Audio tab.
       </p>
     );
   }
 
-  const trimEnd = audio.trimEnd ?? audio.duration;
-  const trimmed = audio.trimStart > 0 || audio.trimEnd !== null;
+  const trimEnd = clip.trimEnd ?? clip.duration;
+  const length = audioClipLength(clip);
+  const trimmed = clip.trimStart > 0 || clip.trimEnd !== null;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-md border bg-elevated px-2.5 py-2">
-        <p className="truncate text-xs font-medium">{audio.name}</p>
+        <p className="truncate text-xs font-medium">{clip.name}</p>
         <p className="font-mono text-[11px] text-muted-foreground">
-          {formatTime(audio.duration)}
+          {formatTime(clip.start)} → {formatTime(clip.start + length)} · file {formatTime(clip.duration)}
         </p>
       </div>
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-muted-foreground">Starts at (s)</span>
+        <Input
+          type="number"
+          min={0}
+          step={0.5}
+          value={Number(clip.start.toFixed(2))}
+          onChange={(e) =>
+            updateAudioClip(clip.id, { start: Math.max(0, Number(e.target.value) || 0) })
+          }
+        />
+      </label>
+
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Trim</span>
+          <span className="text-muted-foreground">Trim (in → out)</span>
           <span className="font-mono text-[11px]">
-            {formatTime(audio.trimStart)} – {formatTime(trimEnd)}
+            {formatTime(clip.trimStart)} → {formatTime(trimEnd)}
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Drag the handles on the audio track to set in and out points. The
-          video will be {formatTime(trimEnd - audio.trimStart)} long.
+          Drag the clip&apos;s edges on the timeline to trim it.
         </p>
         {trimmed ? (
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              update((d) => {
-                if (!d.audio) return;
-                d.audio.trimStart = 0;
-                d.audio.trimEnd = null;
-              })
-            }
+            onClick={() => updateAudioClip(clip.id, { trimStart: 0, trimEnd: null })}
           >
             Reset trim
           </Button>
         ) : null}
       </div>
+
       <PropertySlider
-        label="Track volume"
-        value={Math.round(audio.volume * 100)}
+        label="Clip volume"
+        value={Math.round(clip.volume * 100)}
         min={0}
         max={100}
         unit="%"
-        onChange={(v) => {
-          update(
-            (d) => {
-              if (d.audio) d.audio.volume = v / 100;
-            },
-            { coalesceKey: "audio-volume" },
-          );
-          getAudioEngine().setVolume(v / 100);
-        }}
+        onChange={(v) =>
+          updateAudioClip(clip.id, { volume: v / 100 }, { coalesceKey: `volume:${clip.id}` })
+        }
       />
+      <div className="flex items-center justify-between">
+        <Label htmlFor="clip-muted" className="text-xs text-muted-foreground">
+          Muted
+        </Label>
+        <Switch
+          id="clip-muted"
+          checked={clip.muted}
+          onCheckedChange={(muted) =>
+            updateAudioClip(clip.id, { muted }, { coalesceKey: `mute:${clip.id}` })
+          }
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={() => {
+            const rightId = splitAudioClip(clip.id, getAudioEngine().getCurrentTime());
+            if (rightId) select({ type: "audio", id: rightId });
+          }}
+        >
+          <Scissors aria-hidden /> Split at playhead
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="Delete clip"
+          onClick={() => {
+            removeAudioClip(clip.id);
+            select(null);
+          }}
+        >
+          <Trash2 aria-hidden />
+        </Button>
+      </div>
       <p className="text-[11px] text-muted-foreground">
-        Track volume is baked into the exported video. Use the mute button
-        under the preview to silence playback while editing.
+        Clip volume is baked into the exported video. Overlapping clips are
+        mixed together.
       </p>
     </div>
   );

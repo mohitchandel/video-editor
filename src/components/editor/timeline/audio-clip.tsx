@@ -1,89 +1,91 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { VolumeX } from "lucide-react";
+import { LayerContextMenu } from "@/components/editor/layer-context-menu";
 import { TIMELINE } from "@/config/editor-config";
 import { clamp, formatTime } from "@/lib/audio/audio-utils";
-import type { ProjectAudio } from "@/lib/project/project-schema";
+import { audioClipLength, type AudioClip } from "@/lib/project/project-schema";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
 import { AudioWaveform } from "./audio-waveform";
 
 type AudioClipProps = {
-  audio: ProjectAudio;
+  clip: AudioClip;
   pxPerSecond: number;
-  widthPx: number;
   selected: boolean;
   onSelect: () => void;
 };
 
-type TrimEdge = "start" | "end";
+type DragMode = "move" | "trim-start" | "trim-end";
 
 /**
- * The song on the timeline. Always spans the full file; dragging the in/out
- * handles trims what plays and exports, and the trimmed-off parts are dimmed.
+ * One audio clip on its timeline row. Drag the body to move it, drag an edge
+ * to trim the file's in/out point (the left edge keeps the end in place, like
+ * desktop editors). Overlapping clips simply mix.
  */
-export function AudioClip({
-  audio,
-  pxPerSecond,
-  widthPx,
-  selected,
-  onSelect,
-}: AudioClipProps) {
+export function AudioClipView({ clip, pxPerSecond, selected, onSelect }: AudioClipProps) {
   const dragRef = useRef<{
-    edge: TrimEdge;
+    mode: DragMode;
     pointerStartX: number;
+    start: number;
     trimStart: number;
     trimEnd: number;
   } | null>(null);
+  const [dragging, setDragging] = useState<DragMode | null>(null);
 
-  const [dragging, setDragging] = useState<TrimEdge | null>(null);
-
-  const trimEnd = audio.trimEnd ?? audio.duration;
+  const trimEnd = clip.trimEnd ?? clip.duration;
+  const length = audioClipLength(clip);
   const snap = (t: number, disable: boolean) =>
     disable ? t : Math.round(t / TIMELINE.snap) * TIMELINE.snap;
 
-  const beginDrag = (edge: TrimEdge, e: React.PointerEvent) => {
+  const beginDrag = (mode: DragMode, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
     e.stopPropagation();
-    e.preventDefault();
     onSelect();
     dragRef.current = {
-      edge,
+      mode,
       pointerStartX: e.clientX,
-      trimStart: audio.trimStart,
+      start: clip.start,
+      trimStart: clip.trimStart,
       trimEnd,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDragging(edge);
+    setDragging(mode);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
     const dt = (e.clientX - drag.pointerStartX) / pxPerSecond;
+    const free = e.altKey;
     const min = TIMELINE.minAudioLength;
-    const next =
-      drag.edge === "start"
-        ? {
-            trimStart: clamp(snap(drag.trimStart + dt, e.altKey), 0, drag.trimEnd - min),
-            trimEnd: drag.trimEnd,
-          }
-        : {
-            trimStart: drag.trimStart,
-            trimEnd: clamp(
-              snap(drag.trimEnd + dt, e.altKey),
-              drag.trimStart + min,
-              audio.duration,
-            ),
-          };
-    useProjectStore.getState().update(
-      (draft) => {
-        if (!draft.audio) return;
-        draft.audio.trimStart = next.trimStart;
-        draft.audio.trimEnd =
-          next.trimEnd >= audio.duration - 0.01 ? null : next.trimEnd;
-      },
-      { coalesceKey: "audio-trim" },
-    );
+    const { updateAudioClip } = useProjectStore.getState();
+    const options = { coalesceKey: `audio-drag:${clip.id}` };
+
+    if (drag.mode === "move") {
+      updateAudioClip(clip.id, { start: Math.max(0, snap(drag.start + dt, free)) }, options);
+    } else if (drag.mode === "trim-start") {
+      // Shift the in point and the timeline start together so the clip's
+      // end stays where it is.
+      const delta = clamp(
+        snap(drag.trimStart + dt, free) - drag.trimStart,
+        -Math.min(drag.trimStart, drag.start),
+        drag.trimEnd - drag.trimStart - min,
+      );
+      updateAudioClip(
+        clip.id,
+        { trimStart: drag.trimStart + delta, start: drag.start + delta },
+        options,
+      );
+    } else {
+      const next = clamp(snap(drag.trimEnd + dt, free), drag.trimStart + min, clip.duration);
+      updateAudioClip(
+        clip.id,
+        { trimEnd: next >= clip.duration - 0.01 ? null : next },
+        options,
+      );
+    }
   };
 
   const onPointerUp = () => {
@@ -91,95 +93,81 @@ export function AudioClip({
     setDragging(null);
   };
 
-  // Bracket-style in/out handles, like the trim grips in desktop editors.
-  const handleClass =
-    "absolute inset-y-0 z-10 flex w-3.5 cursor-ew-resize touch-none items-center justify-center bg-track-audio text-background shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-[filter] hover:brightness-125 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none";
-  const gripClass = "flex flex-col gap-0.5 *:h-2.5 *:w-px *:bg-current";
+  const edgeClass =
+    "absolute inset-y-0 z-10 flex w-2.5 cursor-ew-resize touch-none items-center justify-center bg-track-audio/80 text-background opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none";
 
   return (
-    <div
-      className={cn(
-        "absolute inset-y-1 left-0 overflow-hidden rounded-md border border-track-audio/50 bg-track-audio/10",
-        selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-      )}
-      style={{ width: widthPx }}
-    >
-      <button
-        type="button"
-        aria-label={`Audio track: ${audio.name}`}
-        onClick={onSelect}
-        className="absolute inset-0 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none"
-      >
-        <AudioWaveform widthPx={widthPx} heightPx={TIMELINE.trackHeight - 8} />
-      </button>
-
-      {/* Trimmed-off regions, hatched so they read as "cut" */}
+    <LayerContextMenu target={{ type: "audio", id: clip.id }} triggerClassName="contents">
       <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 bg-background/75 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,0.05)_6px_8px)]"
-        style={{ width: audio.trimStart * pxPerSecond }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 bg-background/75 bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,0.05)_6px_8px)]"
-        style={{ width: (audio.duration - trimEnd) * pxPerSecond }}
-      />
-
-      <span
-        role="slider"
-        aria-label="Trim start"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(trimEnd)}
-        aria-valuenow={Math.round(audio.trimStart)}
+        role="button"
         tabIndex={0}
-        onPointerDown={(e) => beginDrag("start", e)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        title={`In point ${formatTime(audio.trimStart)}`}
-        className={cn(handleClass, "flex-row gap-0.5 rounded-l-md")}
-        style={{ left: audio.trimStart * pxPerSecond }}
-      >
-        <span className={gripClass}>
-          <span />
-          <span />
-        </span>
-      </span>
-      {dragging ? (
-        <span
-          aria-live="polite"
-          className="pointer-events-none absolute top-0.5 z-20 rounded bg-background/90 px-1 font-mono text-[10px] text-foreground"
-          style={
-            dragging === "start"
-              ? { left: audio.trimStart * pxPerSecond + 16 }
-              : { left: trimEnd * pxPerSecond - 16, transform: "translateX(-100%)" }
+        aria-label={`${clip.name} clip, ${formatTime(clip.start)} to ${formatTime(clip.start + length)}`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect();
           }
-        >
-          {dragging === "start"
-            ? `In ${formatTime(audio.trimStart)}`
-            : `Out ${formatTime(trimEnd)} · ${formatTime(trimEnd - audio.trimStart)} long`}
-        </span>
-      ) : null}
-      <span
-        role="slider"
-        aria-label="Trim end"
-        aria-valuemin={Math.round(audio.trimStart)}
-        aria-valuemax={Math.round(audio.duration)}
-        aria-valuenow={Math.round(trimEnd)}
-        tabIndex={0}
-        onPointerDown={(e) => beginDrag("end", e)}
+        }}
+        onPointerDown={(e) => beginDrag("move", e)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        title={`Out point ${formatTime(trimEnd)}`}
-        className={cn(handleClass, "rounded-r-md")}
-        style={{ left: trimEnd * pxPerSecond - 14 }}
+        className={cn(
+          "group absolute inset-y-1 cursor-grab touch-none overflow-hidden rounded-md border border-track-audio/50 bg-track-audio/10 select-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
+          clip.muted && "opacity-50",
+          selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
+        )}
+        style={{
+          left: clip.start * pxPerSecond,
+          width: Math.max(8, length * pxPerSecond),
+        }}
       >
-        <span className={gripClass}>
-          <span />
-          <span />
+        <AudioWaveform
+          assetId={clip.assetId}
+          widthPx={Math.max(8, length * pxPerSecond)}
+          heightPx={TIMELINE.trackHeight - 8}
+          from={clip.trimStart / clip.duration}
+          to={trimEnd / clip.duration}
+        />
+        <span className="pointer-events-none absolute top-0.5 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1 rounded bg-background/70 px-1 text-[10px] text-track-audio">
+          {clip.muted ? <VolumeX className="size-3" aria-hidden /> : null}
+          <span className="truncate">
+            {dragging === "move"
+              ? `${clip.name} · ${formatTime(clip.start)}`
+              : dragging === "trim-start"
+                ? `In ${formatTime(clip.trimStart)}`
+                : dragging === "trim-end"
+                  ? `Out ${formatTime(trimEnd)} · ${formatTime(length)} long`
+                  : clip.name}
+          </span>
         </span>
-      </span>
-    </div>
+        <span
+          role="slider"
+          aria-label="Trim in point"
+          aria-valuenow={Math.round(clip.trimStart)}
+          tabIndex={0}
+          onPointerDown={(e) => beginDrag("trim-start", e)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          className={cn(edgeClass, "left-0 rounded-l-md")}
+        >
+          <span className="h-3 w-px bg-current" />
+        </span>
+        <span
+          role="slider"
+          aria-label="Trim out point"
+          aria-valuenow={Math.round(trimEnd)}
+          tabIndex={0}
+          onPointerDown={(e) => beginDrag("trim-end", e)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          className={cn(edgeClass, "right-0 rounded-r-md")}
+        >
+          <span className="h-3 w-px bg-current" />
+        </span>
+      </div>
+    </LayerContextMenu>
   );
 }

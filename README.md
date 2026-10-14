@@ -4,10 +4,10 @@ A free, browser-based music visualizer editor for independent musicians and YouT
 
 ## Features
 
-- **Audio** — upload MP3/WAV/OGG/FLAC/M4A, play/pause/seek, live frequency analysis via the Web Audio API
+- **Audio** — upload any number of MP3/WAV/OGG/FLAC/M4A files; each becomes a clip on its own timeline track that you can move, trim, split at the playhead, duplicate, mute, and mix with the others (overlaps blend). Play/pause/seek, live frequency analysis of the mix via the Web Audio API
 - **Seven visualizers** — circular spectrum, frequency bars, waveform, mirrored spectrum, radial waveform, pulse ring, minimal equalizer — all driven by the actual audio, with configurable colors, size, position, sensitivity, smoothing, bar count, glow, and rotation
 - **Layers** — background (solid / gradient / image), image layers (scale, rotation, corner radius, brightness/contrast/blur), text layers (fonts, weights, gradients, outline, shadow, glow, alignment, letter spacing)
-- **Timeline** — fits the whole song to the visible width by default (zoom in up to 16×), time ruler with scrubbing, waveform audio track with in/out trim handles (trimmed-off time is dimmed and skipped by playback and export), colored per-layer tracks, drag to move, drag edges to trim (snap to grid, hold <kbd>⌥</kbd> for free positioning), playhead synced to a single playback clock
+- **Timeline** — fits the whole project to the visible width by default (zoom in up to 16×), drag the top edge to resize, time ruler with scrubbing, one waveform track per audio clip, colored per-layer tracks, a background track with timed background changes (cut / cross-fade / slide / zoom transitions), drag to move, drag edges to trim (snap to grid, hold <kbd>⌥</kbd> for free positioning), playhead synced to a single playback clock
 - **Editing** — contextual inspector per selection, drag layers directly on the canvas, right-click a layer on the canvas or timeline to bring forward / send backward / duplicate / hide / delete, undo/redo (<kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>), <kbd>Space</kbd> to play/pause, <kbd>Delete</kbd> to remove a layer
 - **Output** — landscape 16:9, portrait 9:16, or square 1:1 at 720p/1080p
 - **Export** — real video files (WebM everywhere; MP4 where the browser's encoder supports it, e.g. Safari) with synchronized audio, recorded in real time via MediaRecorder

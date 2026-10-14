@@ -27,18 +27,24 @@ export function useProjectPersistence() {
         if (cancelled) return;
         if (saved) {
           for (const [id, blob] of saved.blobs) registerAsset(id, blob);
-          const audioAssetId = saved.project.audio?.assetId;
-          if (audioAssetId) {
-            const blob = saved.blobs.get(audioAssetId);
-            if (blob) {
-              const engine = getAudioEngine();
-              await engine.load(await blob.arrayBuffer());
-              engine.setVolume(saved.project.audio?.volume ?? 1);
-            } else {
-              // Audio blob didn't survive — drop the dangling reference.
-              saved.project.audio = null;
+          // Decode every audio file the clips reference; drop clips whose
+          // file didn't survive.
+          const engine = getAudioEngine();
+          const decoded = new Set<string>();
+          const audioAssetIds = new Set(saved.project.audioClips.map((c) => c.assetId));
+          for (const assetId of audioAssetIds) {
+            const blob = saved.blobs.get(assetId);
+            if (!blob) continue;
+            try {
+              await engine.load(assetId, await blob.arrayBuffer());
+              decoded.add(assetId);
+            } catch {
+              // Undecodable now — treat like a missing file.
             }
           }
+          saved.project.audioClips = saved.project.audioClips.filter((c) =>
+            decoded.has(c.assetId),
+          );
           if (!cancelled) useProjectStore.getState().replaceProject(saved.project);
         }
       } catch {
