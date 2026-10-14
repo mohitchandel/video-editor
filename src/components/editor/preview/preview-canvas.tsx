@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LayerContextMenu } from "@/components/editor/layer-context-menu";
 import { ASPECT_RATIOS } from "@/config/editor-config";
 import { getAudioEngine } from "@/lib/audio/audio-engine";
 import { getAssetImage } from "@/lib/media/media-registry";
@@ -20,6 +21,12 @@ export function PreviewCanvas() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const aspectRatio = useProjectStore((s) => s.project.aspectRatio);
   const previewZoom = useEditorStore((s) => s.previewZoom);
+  // Cursor tells the user a layer is grabbable before they press.
+  const [cursor, setCursor] = useState<"default" | "grab" | "grabbing">(
+    "default",
+  );
+  // Layer under the pointer when the context menu was opened.
+  const [menuTarget, setMenuTarget] = useState<string | null>(null);
   const dragRef = useRef<{
     layerId: string;
     startX: number;
@@ -101,7 +108,17 @@ export function PreviewCanvas() {
     return null;
   };
 
+  const onContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = toNormalized(e as unknown as React.PointerEvent);
+    const hit = hitTest(x, y);
+    setMenuTarget(hit?.id ?? null);
+    useEditorStore
+      .getState()
+      .select(hit ? { type: "layer", id: hit.id } : { type: "background" });
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
     const { x, y } = toNormalized(e);
     const { selection, select } = useEditorStore.getState();
     const { project } = useProjectStore.getState();
@@ -119,6 +136,7 @@ export function PreviewCanvas() {
         layerY: hit.y,
       };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      setCursor("grabbing");
       return;
     }
     // Selected layer can still be grabbed even if the hit test misses it.
@@ -133,6 +151,7 @@ export function PreviewCanvas() {
           layerY: layer.y,
         };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        setCursor("grabbing");
         return;
       }
     }
@@ -141,8 +160,12 @@ export function PreviewCanvas() {
 
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
-    if (!drag) return;
     const { x, y } = toNormalized(e);
+    if (!drag) {
+      // Hover feedback only; React skips the re-render when unchanged.
+      setCursor(hitTest(x, y) ? "grab" : "default");
+      return;
+    }
     useProjectStore.getState().updateLayer(
       drag.layerId,
       {
@@ -154,6 +177,7 @@ export function PreviewCanvas() {
   };
 
   const onPointerUp = () => {
+    if (dragRef.current) setCursor("grab");
     dragRef.current = null;
   };
 
@@ -170,6 +194,7 @@ export function PreviewCanvas() {
         };
 
   return (
+    <LayerContextMenu layerId={menuTarget} triggerClassName="contents">
     <div
       ref={wrapperRef}
       className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-canvas p-4"
@@ -184,8 +209,13 @@ export function PreviewCanvas() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onPointerLeave={() => {
+            if (!dragRef.current) setCursor("default");
+          }}
+          onContextMenu={onContextMenu}
           className="max-h-full max-w-full rounded-sm shadow-[0_0_0_1px_var(--border),0_12px_40px_rgba(0,0,0,0.5)]"
           style={{
+            cursor,
             aspectRatio: `${ratio.width} / ${ratio.height}`,
             ...(previewZoom === null
               ? ratio.width >= ratio.height
@@ -197,5 +227,6 @@ export function PreviewCanvas() {
         />
       </div>
     </div>
+    </LayerContextMenu>
   );
 }

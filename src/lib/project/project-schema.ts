@@ -127,8 +127,13 @@ export type ProjectBackground = z.infer<typeof backgroundSchema>;
 export const projectAudioSchema = z.object({
   assetId: z.string(),
   name: z.string(),
+  /** Full length of the decoded file, seconds. */
   duration: z.number().positive(),
   volume: z.number().min(0).max(1).default(1),
+  /** In point within the file, seconds. Project time 0 maps here. */
+  trimStart: z.number().min(0).default(0),
+  /** Out point within the file, seconds. null = play to the end. */
+  trimEnd: z.number().positive().nullable().default(null),
 });
 export type ProjectAudio = z.infer<typeof projectAudioSchema>;
 

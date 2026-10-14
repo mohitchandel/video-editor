@@ -59,7 +59,7 @@ export function Inspector() {
   return (
     <aside
       aria-label="Properties"
-      className="flex w-66 shrink-0 flex-col border-l bg-card max-lg:w-60"
+      className="flex min-h-0 w-66 shrink-0 flex-col border-l bg-card max-lg:w-60"
     >
       <PanelHeader
         title={inspectorTitle(selection)}

@@ -32,7 +32,7 @@ const KIND_COLOR = {
 
 export function LayersPanel() {
   const layers = useProjectStore((s) => s.project.layers);
-  const update = useProjectStore((s) => s.update);
+  const moveLayer = useProjectStore((s) => s.moveLayer);
   const updateLayer = useProjectStore((s) => s.updateLayer);
   const removeLayer = useProjectStore((s) => s.removeLayer);
   const selection = useEditorStore((s) => s.selection);
@@ -50,15 +50,7 @@ export function LayersPanel() {
     );
   }
 
-  const move = (id: string, direction: -1 | 1) => {
-    update((d) => {
-      const index = d.layers.findIndex((l) => l.id === id);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= d.layers.length) return;
-      const [layer] = d.layers.splice(index, 1);
-      d.layers.splice(target, 0, layer);
-    });
-  };
+  const move = moveLayer;
 
   // Topmost layer renders last — list shows it first, like typical editors.
   const ordered = [...layers].reverse();

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Layer, Project } from "@/lib/project/project-schema";
-import { createDefaultProject } from "@/lib/project/project-defaults";
+import { createDefaultProject, createId } from "@/lib/project/project-defaults";
 
 const HISTORY_LIMIT = 50;
 /** Repeated edits with the same key within this window share one undo step. */
@@ -32,6 +32,10 @@ interface ProjectStore {
   ) => void;
   addLayer: (layer: Layer) => void;
   removeLayer: (id: string) => void;
+  /** Inserts a copy directly above the source layer; returns the new id. */
+  duplicateLayer: (id: string) => string | null;
+  /** +1 brings the layer forward (toward the top), -1 sends it backward. */
+  moveLayer: (id: string, direction: -1 | 1) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -93,6 +97,31 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   removeLayer: (id) => {
     get().update((draft) => {
       draft.layers = draft.layers.filter((l) => l.id !== id);
+    });
+  },
+
+  duplicateLayer: (id) => {
+    const source = get().project.layers.find((l) => l.id === id);
+    if (!source) return null;
+    const copy: Layer = {
+      ...structuredClone(source),
+      id: createId(source.kind),
+      name: `${source.name} copy`,
+    };
+    get().update((draft) => {
+      const index = draft.layers.findIndex((l) => l.id === id);
+      draft.layers.splice(index + 1, 0, copy);
+    });
+    return copy.id;
+  },
+
+  moveLayer: (id, direction) => {
+    get().update((draft) => {
+      const index = draft.layers.findIndex((l) => l.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= draft.layers.length) return;
+      const [layer] = draft.layers.splice(index, 1);
+      draft.layers.splice(target, 0, layer);
     });
   },
 

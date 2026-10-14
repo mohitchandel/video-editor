@@ -22,6 +22,19 @@ describe("project schema", () => {
     if (parsed.ok) expect(parsed.project).toEqual(project);
   });
 
+  it("fills trim defaults for projects saved before trimming existed", () => {
+    const project = createDefaultProject();
+    const parsed = parseProject({
+      ...project,
+      audio: { assetId: "ast_1", name: "song.mp3", duration: 120, volume: 1 },
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.project.audio?.trimStart).toBe(0);
+      expect(parsed.project.audio?.trimEnd).toBeNull();
+    }
+  });
+
   it("rejects invalid JSON with a readable error", () => {
     const parsed = parseProject("not json {");
     expect(parsed.ok).toBe(false);

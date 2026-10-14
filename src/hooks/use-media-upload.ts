@@ -63,7 +63,14 @@ export function useMediaUpload() {
             mimeType: file.type || "audio/unknown",
             size: file.size,
           });
-          draft.audio = { assetId: id, name: file.name, duration, volume: 1 };
+          draft.audio = {
+            assetId: id,
+            name: file.name,
+            duration,
+            volume: 1,
+            trimStart: 0,
+            trimEnd: null,
+          };
           draft.duration = duration;
         });
         if (previousAudioAsset) revokeAsset(previousAudioAsset);

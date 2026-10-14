@@ -38,7 +38,9 @@ export class ExportEngine {
     this.aborted = false;
     const engine = getAudioEngine();
     engine.pause();
-    engine.seek(0);
+    // Export covers the trimmed in/out range only.
+    const range = engine.getRange();
+    engine.seek(range.start);
 
     const canvas = document.createElement("canvas");
     canvas.width = settings.width;
@@ -65,13 +67,13 @@ export class ExportEngine {
       if (e.data.size > 0) chunks.push(e.data);
     };
 
-    const duration = project.duration;
+    const length = Math.max(0.01, range.end - range.start);
     let raf = 0;
 
     const result = new Promise<ExportOutcome>((resolve, reject) => {
       recorder.onstop = () => {
         engine.pause();
-        engine.seek(0);
+        engine.seek(range.start);
         if (this.aborted) {
           reject(new Error("Export cancelled."));
           return;
@@ -109,8 +111,8 @@ export class ExportEngine {
       }
       const time = engine.getCurrentTime();
       renderer.render(ctx, project, time, engine.getFrame(), size);
-      onProgress(Math.min(1, time / duration));
-      if (time >= duration - 0.01 && !engine.isPlaying) {
+      onProgress(Math.min(1, (time - range.start) / length));
+      if (time >= range.end - 0.01 && !engine.isPlaying) {
         stop();
         return;
       }

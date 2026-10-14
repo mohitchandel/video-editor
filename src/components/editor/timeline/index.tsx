@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Eye,
   EyeOff,
@@ -20,11 +20,18 @@ import type { Layer } from "@/lib/project/project-schema";
 import { useEditorStore } from "@/stores/editor-store";
 import { useProjectStore } from "@/stores/project-store";
 import { cn } from "cn";
-import { AudioWaveform } from "./audio-waveform";
+import { AudioClip } from "./audio-clip";
 import { TimelineClip } from "./timeline-clip";
 import { TimelinePlayhead } from "./timeline-playhead";
 
 const LABEL_WIDTH = 128;
+/** Candidate ruler label intervals in seconds; the first that fits wins. */
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300];
+/** Minimum pixels between ruler labels. */
+const MIN_LABEL_GAP = 72;
+
+const isMultiple = (t: number, step: number) =>
+  Math.abs(t / step - Math.round(t / step)) < 1e-6;
 
 const KIND_ICON = {
   image: ImageIcon,
@@ -74,7 +81,20 @@ export function Timeline() {
   const setZoom = useEditorStore((s) => s.setTimelineZoom);
   const scrubbing = useRef(false);
 
-  const pxPerSecond = TIMELINE.basePxPerSecond * zoom;
+  // Zoom 1 = the whole project fits the visible track area.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [trackWidth, setTrackWidth] = useState(800);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setTrackWidth(Math.max(100, entry.contentRect.width - LABEL_WIDTH - 12));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const pxPerSecond = (trackWidth / Math.max(1, project.duration)) * zoom;
   const width = Math.max(1, project.duration) * pxPerSecond;
   const zoomLevels = TIMELINE.zoomLevels;
   const zoomIndex = zoomLevels.findIndex((z) => z >= zoom - 0.001);
@@ -88,11 +108,18 @@ export function Timeline() {
   // Topmost layer first, matching the layers panel.
   const rows = [...project.layers].reverse();
 
-  const second = Math.max(1, Math.round(project.duration / 60));
-  const tickEvery = zoom < 0.5 ? 10 : zoom < 1 ? 5 : 1;
-  const labelEvery = zoom < 0.5 ? 30 : zoom < 1 ? 10 : 5;
+  const labelEvery =
+    TICK_STEPS.find((step) => step * pxPerSecond >= MIN_LABEL_GAP) ?? 600;
+  const tickEvery = labelEvery >= 5 ? labelEvery / 5 : labelEvery / 2;
   const ticks: number[] = [];
-  for (let t = 0; t <= project.duration; t += tickEvery * second) ticks.push(t);
+  for (let t = 0; t <= project.duration + 1e-6; t += tickEvery) {
+    ticks.push(Number(t.toFixed(3)));
+  }
+
+  const trimStart = project.audio?.trimStart ?? 0;
+  const trimEnd = project.audio
+    ? (project.audio.trimEnd ?? project.audio.duration)
+    : project.duration;
 
   return (
     <section
@@ -126,7 +153,7 @@ export function Timeline() {
         </IconButton>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
         <div className="relative w-max min-w-full">
           {/* Ruler */}
           <div className="sticky top-0 z-40 flex" style={{ height: TIMELINE.rulerHeight }}>
@@ -168,10 +195,10 @@ export function Timeline() {
                   <span
                     className={cn(
                       "w-px bg-border",
-                      t % (labelEvery * second) === 0 ? "h-2.5" : "h-1.5",
+                      isMultiple(t, labelEvery) ? "h-2.5" : "h-1.5",
                     )}
                   />
-                  {t % (labelEvery * second) === 0 ? (
+                  {isMultiple(t, labelEvery) ? (
                     <span className="absolute bottom-3 left-1 font-mono text-[10px] text-muted-foreground">
                       {formatTime(t)}
                     </span>
@@ -230,22 +257,13 @@ export function Timeline() {
               style={{ width, height: TIMELINE.trackHeight }}
             >
               {project.audio ? (
-                <button
-                  type="button"
-                  aria-label={`Audio track: ${project.audio.name}`}
-                  onClick={() => select({ type: "audio" })}
-                  className={cn(
-                    "absolute inset-y-1 left-0 overflow-hidden rounded-md border border-track-audio/50 bg-track-audio/10 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none",
-                    selection?.type === "audio" &&
-                      "ring-2 ring-primary ring-offset-1 ring-offset-background",
-                  )}
-                  style={{ width }}
-                >
-                  <AudioWaveform
-                    widthPx={width}
-                    heightPx={TIMELINE.trackHeight - 8}
-                  />
-                </button>
+                <AudioClip
+                  audio={project.audio}
+                  pxPerSecond={pxPerSecond}
+                  widthPx={width}
+                  selected={selection?.type === "audio"}
+                  onSelect={() => select({ type: "audio" })}
+                />
               ) : (
                 <p className="flex h-full items-center px-3 text-[11px] text-muted-foreground">
                   No audio — add a song in the Audio tab.
@@ -286,6 +304,25 @@ export function Timeline() {
           </div>
 
           <TimelinePlayhead pxPerSecond={pxPerSecond} offsetPx={LABEL_WIDTH} />
+
+          {/* Trimmed-off time, dimmed across every track */}
+          {project.audio ? (
+            <>
+              <div
+                aria-hidden
+                className="pointer-events-none absolute top-0 bottom-0 z-10 bg-background/50"
+                style={{ left: LABEL_WIDTH, width: trimStart * pxPerSecond }}
+              />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute top-0 bottom-0 z-10 bg-background/50"
+                style={{
+                  left: LABEL_WIDTH + trimEnd * pxPerSecond,
+                  width: Math.max(0, project.duration - trimEnd) * pxPerSecond,
+                }}
+              />
+            </>
+          ) : null}
         </div>
       </div>
     </section>

@@ -19,9 +19,13 @@ export const EXPORT_RESOLUTIONS = [
 export const EXPORT_FPS = 30;
 
 export const TIMELINE = {
-  /** Pixels per second at zoom = 1. */
-  basePxPerSecond: 40,
-  zoomLevels: [0.25, 0.5, 1, 2, 4] as const,
+  /**
+   * Zoom is a multiplier over "fit": at 1 the whole project spans the
+   * visible track area, so a song never needs scrolling by default.
+   */
+  zoomLevels: [1, 2, 4, 8, 16] as const,
+  /** Shortest trimmed audio length in seconds. */
+  minAudioLength: 1,
   /** Snap increment in seconds. */
   snap: 0.5,
   trackHeight: 36,

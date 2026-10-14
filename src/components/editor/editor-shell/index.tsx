@@ -63,11 +63,13 @@ export function EditorShell() {
         <TopBar />
         <div className="relative flex min-h-0 flex-1">
           <ToolRail />
-          <div className="max-md:absolute max-md:inset-y-0 max-md:left-12 max-md:z-40 max-md:shadow-2xl">
+          {/* `flex min-h-0` bounds the panel height so its ScrollArea scrolls
+              instead of the panel growing through the timeline. */}
+          <div className="flex min-h-0 max-md:absolute max-md:inset-y-0 max-md:left-12 max-md:z-40 max-md:shadow-2xl">
             <AssetsPanel />
           </div>
           <Preview />
-          <div className="max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:shadow-2xl">
+          <div className="flex min-h-0 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:shadow-2xl">
             <Inspector />
           </div>
           {!inspectorOpen ? (

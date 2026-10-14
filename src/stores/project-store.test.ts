@@ -15,6 +15,28 @@ describe("project store history", () => {
     expect(useProjectStore.getState().project.layers).toHaveLength(0);
   });
 
+  it("duplicates a layer directly above the source", () => {
+    const a = createTextLayer("A");
+    const b = createTextLayer("B");
+    useProjectStore.getState().addLayer(a);
+    useProjectStore.getState().addLayer(b);
+    const copyId = useProjectStore.getState().duplicateLayer(a.id);
+    const layers = useProjectStore.getState().project.layers;
+    expect(layers.map((l) => l.id)).toEqual([a.id, copyId, b.id]);
+    expect(layers[1].name).toBe("A copy");
+  });
+
+  it("moves layers forward and backward within bounds", () => {
+    const a = createTextLayer("A");
+    const b = createTextLayer("B");
+    useProjectStore.getState().addLayer(a);
+    useProjectStore.getState().addLayer(b);
+    useProjectStore.getState().moveLayer(a.id, 1);
+    expect(useProjectStore.getState().project.layers.map((l) => l.id)).toEqual([b.id, a.id]);
+    useProjectStore.getState().moveLayer(a.id, 1);
+    expect(useProjectStore.getState().project.layers.map((l) => l.id)).toEqual([b.id, a.id]);
+  });
+
   it("undoes and redoes edits", () => {
     const store = useProjectStore.getState();
     store.update((d) => {

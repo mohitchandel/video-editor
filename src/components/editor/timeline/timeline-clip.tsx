@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { LayerContextMenu } from "@/components/editor/layer-context-menu";
 import { TIMELINE } from "@/config/editor-config";
 import { clamp } from "@/lib/audio/audio-utils";
 import type { Layer } from "@/lib/project/project-schema";
@@ -92,6 +93,7 @@ export function TimelineClip({
   };
 
   return (
+    <LayerContextMenu layerId={layer.id} triggerClassName="contents">
     <div
       role="button"
       tabIndex={0}
@@ -133,5 +135,6 @@ export function TimelineClip({
         aria-hidden
       />
     </div>
+    </LayerContextMenu>
   );
 }

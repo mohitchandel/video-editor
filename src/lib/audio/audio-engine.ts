@@ -42,6 +42,8 @@ export class AudioEngine {
   private startedAtCtxTime = 0;
   private silentStartedAt = 0;
   private durationOverride = 30;
+  private trimStart = 0;
+  private trimEnd: number | null = null;
   private volume = 1;
   private monitorVolume = 1;
   private muted = false;
@@ -52,6 +54,33 @@ export class AudioEngine {
   /** Duration of the loaded audio, or the project duration when silent. */
   get duration(): number {
     return this.buffer ? this.buffer.duration : this.durationOverride;
+  }
+
+  /**
+   * Playable window in file time. Playback starts, loops back to, and stops
+   * within it; everything outside is trimmed off. Times reported by the
+   * engine stay in file time so layers keep their absolute positions.
+   */
+  getRange(): { start: number; end: number } {
+    return {
+      start: this.buffer ? this.trimStart : 0,
+      end: this.buffer
+        ? clamp(this.trimEnd ?? this.duration, this.trimStart, this.duration)
+        : this.duration,
+    };
+  }
+
+  /** Narrows playback to [start, end] seconds of the file (end null = EOF). */
+  setTrim(start: number, end: number | null) {
+    if (!this.buffer) return;
+    const total = this.buffer.duration;
+    const nextStart = clamp(start, 0, total);
+    const nextEnd = end === null ? null : clamp(end, nextStart, total);
+    if (nextStart === this.trimStart && nextEnd === this.trimEnd) return;
+    this.trimStart = nextStart;
+    this.trimEnd = nextEnd;
+    // Re-seek so the clock and any running source respect the new window.
+    this.seek(this.getCurrentTime());
   }
 
   get hasAudio(): boolean {
@@ -109,6 +138,8 @@ export class AudioEngine {
     this.buffer = await ctx.decodeAudioData(arrayBuffer);
     this.peaks = computePeaks(this.buffer, 2000);
     this.offset = 0;
+    this.trimStart = 0;
+    this.trimEnd = null;
     this.emit("load");
     return { duration: this.buffer.duration };
   }
@@ -142,7 +173,8 @@ export class AudioEngine {
     if (this.playing) return;
     const ctx = this.ensureContext();
     if (ctx.state === "suspended") await ctx.resume();
-    if (this.offset >= this.duration - 0.01) this.offset = 0;
+    const { start, end } = this.getRange();
+    if (this.offset < start || this.offset >= end - 0.01) this.offset = start;
 
     if (this.buffer) {
       this.startSource(this.offset);
@@ -165,7 +197,8 @@ export class AudioEngine {
   }
 
   seek(time: number) {
-    const target = clamp(time, 0, this.duration);
+    const { start, end } = this.getRange();
+    const target = clamp(time, start, end);
     if (this.playing && this.buffer && this.ctx) {
       this.stopSource();
       this.startSource(target);
@@ -238,7 +271,8 @@ export class AudioEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = this.buffer;
     source.connect(this.masterGain);
-    source.start(0, fromTime);
+    // Stop at the out point even if the tick loop lags a frame.
+    source.start(0, fromTime, Math.max(0, this.getRange().end - fromTime));
     this.source = source;
   }
 
@@ -258,8 +292,9 @@ export class AudioEngine {
   private startTick() {
     const tick = () => {
       if (!this.playing) return;
-      if (this.getCurrentTime() >= this.duration - 0.005) {
-        this.offset = this.duration;
+      const { end } = this.getRange();
+      if (this.getCurrentTime() >= end - 0.005) {
+        this.offset = end;
         this.stopSource();
         this.playing = false;
         this.stopTick();

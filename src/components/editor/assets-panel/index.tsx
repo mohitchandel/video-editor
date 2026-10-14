@@ -49,7 +49,7 @@ export function AssetsPanel() {
   return (
     <aside
       aria-label={`${PANEL_TITLES[tool]} panel`}
-      className="flex w-64 shrink-0 flex-col border-r bg-card max-lg:w-56"
+      className="flex min-h-0 w-64 shrink-0 flex-col border-r bg-card max-lg:w-56"
     >
       <PanelHeader title={PANEL_TITLES[tool]} />
       <ScrollArea className="min-h-0 flex-1">
