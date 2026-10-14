@@ -1,0 +1,148 @@
+import { z } from "zod";
+
+/**
+ * Serializable project document. Runtime resources (AudioBuffer, ImageBitmap,
+ * object URLs) live in the media registry, never here. All coordinates are
+ * normalized 0..1 relative to the composition; pixel-ish sizes (font size,
+ * outline width) are expressed at a 1080p-height baseline and scaled by the
+ * renderer.
+ */
+
+export const aspectRatioSchema = z.enum(["16:9", "9:16", "1:1"]);
+export type AspectRatio = z.infer<typeof aspectRatioSchema>;
+
+export const assetKindSchema = z.enum(["audio", "image"]);
+export type AssetKind = z.infer<typeof assetKindSchema>;
+
+export const assetMetaSchema = z.object({
+  id: z.string(),
+  kind: assetKindSchema,
+  name: z.string(),
+  mimeType: z.string(),
+  size: z.number().nonnegative(),
+});
+export type AssetMeta = z.infer<typeof assetMetaSchema>;
+
+const layerBase = {
+  id: z.string(),
+  name: z.string(),
+  visible: z.boolean().default(true),
+  opacity: z.number().min(0).max(1).default(1),
+  /** Seconds. end === null means "until the end of the project". */
+  start: z.number().min(0).default(0),
+  end: z.number().min(0).nullable().default(null),
+};
+
+export const imageLayerSchema = z.object({
+  ...layerBase,
+  kind: z.literal("image"),
+  assetId: z.string(),
+  x: z.number().default(0.5),
+  y: z.number().default(0.5),
+  scale: z.number().min(0.01).max(8).default(1),
+  rotation: z.number().default(0),
+  cornerRadius: z.number().min(0).max(0.5).default(0),
+  brightness: z.number().min(0).max(3).default(1),
+  contrast: z.number().min(0).max(3).default(1),
+  blur: z.number().min(0).max(100).default(0),
+});
+export type ImageLayer = z.infer<typeof imageLayerSchema>;
+
+export const textAlignSchema = z.enum(["left", "center", "right"]);
+
+export const textLayerSchema = z.object({
+  ...layerBase,
+  kind: z.literal("text"),
+  text: z.string().default("Title"),
+  fontFamily: z.string().default("Geist"),
+  fontSize: z.number().min(8).max(600).default(96),
+  fontWeight: z.number().min(100).max(900).default(700),
+  color: z.string().default("#ffffff"),
+  gradient: z
+    .object({ from: z.string(), to: z.string() })
+    .nullable()
+    .default(null),
+  align: textAlignSchema.default("center"),
+  letterSpacing: z.number().min(-20).max(100).default(0),
+  outlineColor: z.string().default("#000000"),
+  outlineWidth: z.number().min(0).max(40).default(0),
+  shadowColor: z.string().default("#000000"),
+  shadowBlur: z.number().min(0).max(100).default(0),
+  glow: z.number().min(0).max(100).default(0),
+  x: z.number().default(0.5),
+  y: z.number().default(0.5),
+});
+export type TextLayer = z.infer<typeof textLayerSchema>;
+
+export const visualizerStyleSchema = z.enum([
+  "circular-spectrum",
+  "bars",
+  "waveform",
+  "mirrored-spectrum",
+  "radial-waveform",
+  "pulse-ring",
+  "minimal-eq",
+]);
+export type VisualizerStyle = z.infer<typeof visualizerStyleSchema>;
+
+export const visualizerLayerSchema = z.object({
+  ...layerBase,
+  kind: z.literal("visualizer"),
+  style: visualizerStyleSchema.default("circular-spectrum"),
+  primaryColor: z.string().default("#7c5cff"),
+  secondaryColor: z.string().default("#4cc2ff"),
+  useGradient: z.boolean().default(true),
+  x: z.number().default(0.5),
+  y: z.number().default(0.5),
+  /** Fraction of min(width, height). */
+  size: z.number().min(0.05).max(2).default(0.6),
+  sensitivity: z.number().min(0.1).max(4).default(1),
+  smoothing: z.number().min(0).max(0.95).default(0.6),
+  barCount: z.number().int().min(8).max(256).default(64),
+  glow: z.number().min(0).max(100).default(30),
+  rotation: z.number().default(0),
+});
+export type VisualizerLayer = z.infer<typeof visualizerLayerSchema>;
+
+export const layerSchema = z.discriminatedUnion("kind", [
+  imageLayerSchema,
+  textLayerSchema,
+  visualizerLayerSchema,
+]);
+export type Layer = z.infer<typeof layerSchema>;
+export type LayerKind = Layer["kind"];
+
+export const backgroundSchema = z.object({
+  type: z.enum(["solid", "gradient", "image"]).default("solid"),
+  color: z.string().default("#0c0c10"),
+  gradientFrom: z.string().default("#17103a"),
+  gradientTo: z.string().default("#0c0c10"),
+  gradientAngle: z.number().default(135),
+  assetId: z.string().nullable().default(null),
+  blur: z.number().min(0).max(100).default(0),
+  dim: z.number().min(0).max(1).default(0),
+});
+export type ProjectBackground = z.infer<typeof backgroundSchema>;
+
+export const projectAudioSchema = z.object({
+  assetId: z.string(),
+  name: z.string(),
+  duration: z.number().positive(),
+  volume: z.number().min(0).max(1).default(1),
+});
+export type ProjectAudio = z.infer<typeof projectAudioSchema>;
+
+export const projectSchema = z.object({
+  version: z.literal(1),
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  aspectRatio: aspectRatioSchema.default("16:9"),
+  /** Seconds. Follows the audio duration when audio is loaded. */
+  duration: z.number().positive().default(30),
+  audio: projectAudioSchema.nullable().default(null),
+  background: backgroundSchema,
+  layers: z.array(layerSchema).default([]),
+  assets: z.array(assetMetaSchema).default([]),
+  updatedAt: z.number().default(0),
+});
+export type Project = z.infer<typeof projectSchema>;
